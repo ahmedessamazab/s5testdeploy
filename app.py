@@ -1,6 +1,8 @@
+import io
+
 import streamlit as st
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import DDIMScheduler, DiffusionPipeline
 
 # Page configuration
 st.set_page_config(page_title="Ahmed Azab Portfolio", page_icon="🎨", layout="centered")
@@ -8,43 +10,77 @@ st.set_page_config(page_title="Ahmed Azab Portfolio", page_icon="🎨", layout="
 st.title("AI Image Generator")
 st.header("Generate Images with OpenJourney")
 
-st.write("Enter a text prompt below and let AI generate an image for you.")
+st.write("Enter a prompt and generate an AI image.")
+
+# Device configuration
+DEVICE = "cpu"
 
 
-# Load the OpenJourney model
+# Load model
 @st.cache_resource
 def load_model():
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    dtype = torch.float16 if device == "cuda" else torch.float32
-
     pipe = DiffusionPipeline.from_pretrained(
-        "prompthero/openjourney", torch_dtype=dtype
+        "prompthero/openjourney", torch_dtype=torch.float32, use_safetensors=True
     )
 
-    pipe = pipe.to(device)
+    # Use DDIM scheduler
+    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+
+    pipe = pipe.to(DEVICE)
+
+    # Enable memory optimization
+    pipe.enable_attention_slicing()
 
     return pipe
 
 
 # Load model
-with st.spinner("Loading AI model... Please wait"):
-    pipe = load_model()
+try:
+    with st.spinner("Loading OpenJourney model..."):
+        pipe = load_model()
+
+    st.success("Model loaded successfully!")
+
+except Exception as e:
+    st.error(f"Model loading error: {e}")
+    st.stop()
 
 
-# Text prompt
+# Prompt input
 prompt = st.text_area(
     "Enter your image prompt:",
     "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 )
 
-# Generate image
+# Generation settings
+steps = st.slider("Generation Steps", min_value=10, max_value=30, value=15)
+
+guidance = st.slider(
+    "Guidance Scale", min_value=1.0, max_value=15.0, value=7.5, step=0.5
+)
+
+
+# Generate button
 if st.button("Generate Image"):
     if prompt.strip():
-        with st.spinner("Generating your image..."):
-            try:
-                image = pipe(prompt).images[0]
+        try:
+            with st.spinner(
+                "Generating your image... This may take several minutes on CPU."
+            ):
+                generator = torch.Generator(device=DEVICE).manual_seed(42)
+
+                with torch.inference_mode():
+                    result = pipe(
+                        prompt=prompt,
+                        num_inference_steps=steps,
+                        guidance_scale=guidance,
+                        generator=generator,
+                        height=512,
+                        width=512,
+                    )
+
+                image = result.images[0]
 
                 st.success("Image generated successfully!")
 
@@ -52,21 +88,19 @@ if st.button("Generate Image"):
 
                 st.image(image, caption=prompt, use_container_width=True)
 
-                # Download generated image
-                import io
-
+                # Download image
                 img_buffer = io.BytesIO()
                 image.save(img_buffer, format="PNG")
 
                 st.download_button(
-                    label="Download Image",
+                    "Download Image",
                     data=img_buffer.getvalue(),
                     file_name="openjourney_generated.png",
                     mime="image/png",
                 )
 
-            except Exception as e:
-                st.error(f"Error generating image: {e}")
+        except Exception as e:
+            st.error(f"Error generating image: {e}")
 
     else:
-        st.warning("Please enter a prompt first.")
+        st.warning("Please enter a prompt.")

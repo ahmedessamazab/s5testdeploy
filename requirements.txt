@@ -1,8 +1,7 @@
-
 streamlit
 pandas
 transformers
-diffusers
+diffusers==0.35.1
 accelerate
 safetensors
 Pillow
