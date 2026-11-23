@@ -1,37 +1,72 @@
 import streamlit as st
-from transformers import pipeline
+import torch
+from diffusers import DiffusionPipeline
 
-st.set_page_config(page_title="Ahmed Azab Portfolio")
+# Page configuration
+st.set_page_config(page_title="Ahmed Azab Portfolio", page_icon="🎨", layout="centered")
 
-st.title("emotion classification")
+st.title("AI Image Generator")
+st.header("Generate Images with OpenJourney")
+
+st.write("Enter a text prompt below and let AI generate an image for you.")
 
 
-# Load emotion classification model
+# Load the OpenJourney model
 @st.cache_resource
 def load_model():
-    return pipeline(
-        "text-classification",
-        model="SamLowe/roberta-base-go_emotions",
-        top_k=None,
-        device=-1,
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    dtype = torch.float16 if device == "cuda" else torch.float32
+
+    pipe = DiffusionPipeline.from_pretrained(
+        "prompthero/openjourney", torch_dtype=dtype
     )
 
+    pipe = pipe.to(device)
 
-pipe = load_model()
+    return pipe
 
-st.header("Emotion Detection")
 
-sentence = st.text_area("Enter a sentence:", "I am not having a great day")
+# Load model
+with st.spinner("Loading AI model... Please wait"):
+    pipe = load_model()
 
-if st.button("Analyze Emotion"):
-    if sentence.strip():
-        results = pipe(sentence)[0]
 
-        results = sorted(results, key=lambda x: x["score"], reverse=True)
+# Text prompt
+prompt = st.text_area(
+    "Enter your image prompt:",
+    "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
+)
 
-        st.subheader("Predicted Emotions")
+# Generate image
+if st.button("Generate Image"):
+    if prompt.strip():
+        with st.spinner("Generating your image..."):
+            try:
+                image = pipe(prompt).images[0]
 
-        for result in results:
-            if result["score"] > 0.1:
-                st.write(f"**{result['label']}**: {result['score']:.2%}")
-                st.progress(float(result["score"]))
+                st.success("Image generated successfully!")
+
+                st.subheader("Generated Image")
+
+                st.image(image, caption=prompt, use_container_width=True)
+
+                # Download generated image
+                import io
+
+                img_buffer = io.BytesIO()
+                image.save(img_buffer, format="PNG")
+
+                st.download_button(
+                    label="Download Image",
+                    data=img_buffer.getvalue(),
+                    file_name="openjourney_generated.png",
+                    mime="image/png",
+                )
+
+            except Exception as e:
+                st.error(f"Error generating image: {e}")
+
+    else:
+        st.warning("Please enter a prompt first.")
