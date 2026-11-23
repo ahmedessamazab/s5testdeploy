@@ -17,64 +17,24 @@ else:
     DTYPE = torch.float32
 
 
-# Load model
 @st.cache_resource
 def load_model():
-
+    # switch to "mps" for apple devices
     pipe = DiffusionPipeline.from_pretrained(
-        "prompthero/openjourney", torch_dtype=DTYPE, use_safetensors=True
+        "prompthero/openjourney", dtype=torch.bfloat16, device_map="cuda"
     )
-
     pipe = pipe.to(DEVICE)
-
     return pipe
 
 
-# Load pipeline
-try:
-    with st.spinner("Loading OpenJourney model..."):
-        pipe = load_model()
-
-    st.success(f"Model loaded successfully on {DEVICE.upper()}")
-
-except Exception as e:
-    st.error(f"Model loading failed: {e}")
-    st.stop()
-
-
-# Prompt
 prompt = st.text_area(
     "Enter your prompt:",
-    "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
+    "cat in a jungle, cold color palette, muted colors, detailed, 8k",
 )
 
-# Generate
+
 if st.button("Generate Image"):
-    if prompt.strip():
-        try:
-            with st.spinner("Generating image... Please wait"):
-                with torch.inference_mode():
-                    image = pipe(prompt).images[0]
-
-                st.success("Image generated successfully!")
-
-                st.image(image, caption=prompt, use_container_width=True)
-
-                # Download image
-                import io
-
-                buffer = io.BytesIO()
-                image.save(buffer, format="PNG")
-
-                st.download_button(
-                    "Download Image",
-                    data=buffer.getvalue(),
-                    file_name="openjourney.png",
-                    mime="image/png",
-                )
-
-        except Exception as e:
-            st.error(f"Image generation failed: {e}")
-
-    else:
-        st.warning("Please enter a prompt.")
+    with st.spinner("Generating image..."):
+        pipe = load_model()
+        image = pipe(prompt).images[0]
+        st.image(image, caption="Generated Image", use_column_width=True)
